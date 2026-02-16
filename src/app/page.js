@@ -1,5 +1,12 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import {
+  createZipPackage,
+  processOpenFASTOutFiles,
+  toCSV,
+  toFWTXT,
+  toXLSXBlob,
+} from "@/lib/parseOutFile.js";
 
 // Constants
 const INITIAL_STATE = {
@@ -357,7 +364,6 @@ export default function Home() {
       alert("Please select files to process");
       return;
     }
-
     if (state.formats.length === 0) {
       alert("Please select at least one output format");
       return;
@@ -378,9 +384,9 @@ export default function Home() {
         `Starting processing of ${state.selectedFiles.length} files...`,
         "info",
       );
-      updateState({ currentStep: "Preparing files...", progress: 5 });
+      updateState({ currentStep: "Reading files...", progress: 5 });
 
-      // Read file contents
+      // Read file contents (same as you had)
       const filesWithContent = await Promise.all(
         state.files
           .filter((file) => state.selectedFiles.includes(file.name))
@@ -393,77 +399,86 @@ export default function Home() {
       addLog(`Air Density: ${state.airDensity} kg/m³`, "info");
       addLog(`Rotor Area: ${state.rotorArea} m²`, "info");
       addLog(`Formats: ${state.formats.join(", ").toUpperCase()}`, "info");
+      updateState({ progress: 15, currentStep: "Processing files..." });
 
-      updateState({
-        progress: 15,
-        currentStep: "Processing ...",
-      });
-
-      // SINGLE API CALL for all formats
-      const body = {
-        files: filesWithContent,
-        formats: state.formats, // Send all formats at once
-        airDensity: state.airDensity,
-        rotorArea: state.rotorArea,
-      };
-
-      const response = await fetch("/api/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      updateState({ progress: 60, currentStep: "Generating files..." });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Processing failed");
-      }
-
-      const results = await response.json();
-
-      updateState({ progress: 80, currentStep: "Preparing downloads..." });
-
-      // Convert response data to blobs
-      const allResults = {};
-
-      for (const format of state.formats) {
-        const formatData = results[format];
-
-        // Convert individual file
-        const individualBlob = createBlobFromData(
-          formatData.individual.content,
-          formatData.individual.type,
-          format,
+      // Process in-browser (same logic)
+      const { individualData, powerCurveData, baseName } =
+        processOpenFASTOutFiles(
+          filesWithContent,
+          Number(state.airDensity),
+          Number(state.rotorArea),
         );
 
-        // Convert power curve file
-        const powerCurveBlob = createBlobFromData(
-          formatData.powerCurve.content,
-          formatData.powerCurve.type,
-          format,
-        );
+      updateState({ progress: 50, currentStep: "Generating format files..." });
 
-        allResults[format] = {
+      // For each requested format, generate two files (individual + powerCurve)
+      const resultsByFormat = {};
+
+      for (const fmt of state.formats) {
+        let individualBlob, powerBlob, individualName, powerName, contentType;
+
+        if (fmt === "csv") {
+          const indContent = toCSV(individualData);
+          const pcContent = toCSV(powerCurveData);
+          individualBlob = new Blob([indContent], { type: "text/csv" });
+          powerBlob = new Blob([pcContent], { type: "text/csv" });
+          contentType = "text/csv";
+          individualName = `${baseName.individual}.csv`;
+          powerName = `${baseName.powerCurve}.csv`;
+        } else if (fmt === "fw.txt") {
+          const indContent = toFWTXT(individualData);
+          const pcContent = toFWTXT(powerCurveData);
+          individualBlob = new Blob([indContent], { type: "text/plain" });
+          powerBlob = new Blob([pcContent], { type: "text/plain" });
+          contentType = "text/plain";
+          individualName = `${baseName.individual}.fw.txt`;
+          powerName = `${baseName.powerCurve}.fw.txt`;
+        } else if (fmt === "xlsx") {
+          // create XLSX blobs (async)
+          individualBlob = await toXLSXBlob(individualData, "Seed Averages");
+          powerBlob = await toXLSXBlob(powerCurveData, "Power Curve");
+          contentType =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+          individualName = `${baseName.individual}.xlsx`;
+          powerName = `${baseName.powerCurve}.xlsx`;
+        } else {
+          throw new Error("Unsupported format: " + fmt);
+        }
+
+        resultsByFormat[fmt] = {
           individual: {
             blob: individualBlob,
-            filename: formatData.individual.filename,
+            filename: individualName,
+            type: contentType,
           },
           powerCurve: {
-            blob: powerCurveBlob,
-            filename: formatData.powerCurve.filename,
+            blob: powerBlob,
+            filename: powerName,
+            type: contentType,
           },
         };
 
         addLog(
-          `✓ Generated ${format.toUpperCase()} files (seed averages + power curve)`,
+          `✓ Generated ${fmt.toUpperCase()} (seed avg + power curve)`,
           "success",
         );
       }
 
+      updateState({ progress: 80, currentStep: "Creating ZIP..." });
+
+      // Create ZIP with JSZip
+      const zipBlob = await createZipPackage(resultsByFormat);
+
+      // Save the ZIP (suggest name includes timestamp and airDensity)
+      const now = new Date();
+      const zipName = `${baseName.individual}_export_${now.toISOString().replace(/[:.]/g, "-")}.zip`;
+      const zipUrl = URL.createObjectURL(zipBlob);
+
+      // update state results so UI can allow downloads per-file too
       updateState({
         results: {
-          allResults,
+          allResults: resultsByFormat,
+          zip: { blob: zipBlob, url: zipUrl, filename: zipName },
           processedAirDensity: state.airDensity,
           processedRotorArea: state.rotorArea,
           processedFormats: state.formats,
@@ -472,8 +487,7 @@ export default function Home() {
         currentStep: "Complete!",
       });
 
-      addLog(`Processing complete! Results ready for download.`, "success");
-      addLog(`Total files generated: ${state.formats.length * 2}`, "success");
+      addLog("Processing complete! ZIP ready for download.", "success");
     } catch (err) {
       updateState({ error: err.message, progress: 0, currentStep: "" });
       addLog(`Error: ${err.message}`, "error");
@@ -497,6 +511,17 @@ export default function Home() {
       // CSV and FW.TXT are plain text
       return new Blob([content], { type });
     }
+  };
+
+  const downloadZip = () => {
+    const zip = state.results?.zip;
+    if (!zip) return;
+    const a = document.createElement("a");
+    a.href = zip.url;
+    a.download = zip.filename;
+    a.click();
+    URL.revokeObjectURL(zip.url);
+    addLog(`Downloaded ${zip.filename}`, "success");
   };
 
   const downloadFile = (format, fileType) => {
