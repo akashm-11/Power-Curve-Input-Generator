@@ -81,15 +81,6 @@ const Button = ({
   );
 };
 
-const StatCard = ({ label, value, unit }) => (
-  <div>
-    <div className="text-xs text-zinc-400 mb-1">{label}</div>
-    <div className="text-sm font-medium text-zinc-100">
-      {value} {unit && <span className="text-xs text-zinc-400">{unit}</span>}
-    </div>
-  </div>
-);
-
 // Format Selector Component
 const FormatSelector = ({ formats, toggleFormat }) => {
   const items = [
@@ -358,7 +349,7 @@ export default function Home() {
             filesProcessed: filesProcessed || state.filesProcessed,
           });
         },
-        50,
+        200,
       ),
     [updateState],
   );
@@ -599,24 +590,6 @@ export default function Home() {
             <h3 className="text-sm font-semibold text-zinc-200 mb-3">
               Processing Configuration
             </h3>
-
-            <div className="grid grid-cols-3 gap-4 mb-3">
-              <StatCard
-                label="Air Density"
-                value={state.results.processedAirDensity}
-                unit="kg/m³"
-              />
-              <StatCard
-                label="Rotor Area"
-                value={state.results.processedRotorArea}
-                unit="m²"
-              />
-              <StatCard
-                label="Formats"
-                value={state.results.processedFormats.length}
-                unit={`format${state.results.processedFormats.length !== 1 ? "s" : ""}`}
-              />
-            </div>
 
             <div className="flex items-center gap-6 text-xs text-zinc-400 pt-3 border-t border-zinc-700/50">
               <span>{state.selectedFiles.length} files processed</span>

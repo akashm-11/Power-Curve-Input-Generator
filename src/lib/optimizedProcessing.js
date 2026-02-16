@@ -1,8 +1,6 @@
-/* Optimized utilities for handling large file processing */
-
-// Chunk size for batch processing (adjust based on available memory)
-const BATCH_SIZE = 50; // Process 50 files at a time
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks for reading
+// Good balance of speed vs memory
+const BATCH_SIZE = 20; // ✅ 20 files per batch
+const CHUNK_SIZE = 10 * 1024 * 1024; // ✅ 10MB chunks
 
 /**
  * Read file in chunks to avoid memory issues
@@ -55,26 +53,20 @@ export class FileProcessor {
       worker.onmessage = (e) => {
         const { type, data } = e.data;
 
-        if (type === "CURRENT_FILE") {
-          onProgress({
-            type: "current_file",
-            currentFile: data.fileName,
-            filesProcessed: data.fileIndex,
-            progress: (data.fileIndex / data.totalFiles) * 90, // 90% for processing
-          });
-        } else if (type === "PROGRESS") {
-          const overallProgress = (data.batchIndex / totalBatches) * 100;
-          onProgress({
-            type: "progress",
-            progress: Math.min(overallProgress, 95),
-            message: `Processing batch ${data.batchIndex + 1}/${totalBatches} (${data.filesProcessed}/${data.totalFiles} files)`,
-          });
-        } else if (type === "BATCH_COMPLETE") {
+        if (type === "BATCH_COMPLETE") {
           allResults.push(...data.results);
           completedBatches++;
 
+          // Update progress
+          const overallProgress = (completedBatches / totalBatches) * 90;
+          onProgress({
+            type: "progress",
+            progress: overallProgress,
+            message: `Processing batch ${completedBatches}/${totalBatches}`,
+          });
+
           if (completedBatches === totalBatches) {
-            // All batches complete, now aggregate
+            // Aggregate results
             worker.postMessage({
               type: "AGGREGATE_RESULTS",
               data: { individualData: allResults },
@@ -83,14 +75,14 @@ export class FileProcessor {
             onProgress({
               type: "progress",
               progress: 95,
-              message: "Aggregating results...",
+              message: "Generating outputs...",
             });
           }
         } else if (type === "AGGREGATION_COMPLETE") {
           onProgress({
             type: "progress",
             progress: 100,
-            message: "Processing complete!",
+            message: "Complete!",
           });
 
           resolve({
@@ -115,15 +107,21 @@ export class FileProcessor {
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
 
-      // Read file contents for this batch
-      const filesWithContent = await Promise.all(
-        batch.map(async (file) => ({
-          name: file.name,
-          content: await this.readFileSafely(file),
-        })),
-      );
+      // ✅ Read files one by one in the batch
+      const filesWithContent = [];
+      for (const file of batch) {
+        try {
+          const content = await file.text();
+          filesWithContent.push({
+            name: file.name,
+            content: content,
+          });
+        } catch (error) {
+          console.error(`Error reading ${file.name}:`, error);
+        }
+      }
 
-      // Send to worker
+      // Send batch to worker
       worker.postMessage({
         type: "PROCESS_BATCH",
         data: {
@@ -135,8 +133,8 @@ export class FileProcessor {
         },
       });
 
-      // Wait a bit between batches to allow garbage collection
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // ✅ Small delay to prevent memory spike
+      //   await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
 
@@ -173,7 +171,7 @@ export function createDebouncedProgress(callback, delay = 100) {
     const now = Date.now();
 
     // Always update if it's been more than delay ms
-    if (now - lastUpdate >= delay) {
+    if (now - lastUpdate >= 1000) {
       lastUpdate = now;
       callback(data);
       return;

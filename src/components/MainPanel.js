@@ -44,16 +44,6 @@ export default function MainPanel({
         {/* BEFORE PROCESSING */}
         {!state.results && !state.processing && (
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
-            {/* Header */}
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-semibold text-zinc-100">
-                Get Started
-              </h2>
-              <p className="text-zinc-400 mt-2">
-                Follow these steps to generate your power curve
-              </p>
-            </div>
-
             {/* INNER GRID */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* LEFT: Instructions */}

@@ -102,17 +102,7 @@ self.onmessage = async function (e) {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
-        // ✅ ADD THIS - Send current file name
-        self.postMessage({
-          type: "CURRENT_FILE",
-          data: {
-            fileName: file.name,
-            fileIndex: i + 1,
-            totalFiles: files.length,
-          },
-        });
-
-        // Process file
+        // ✅ Just process, no updates
         const result = processFile(
           file.content,
           file.name,
@@ -122,22 +112,9 @@ self.onmessage = async function (e) {
         if (result) {
           results.push(result);
         }
-
-        // Send progress update every 10 files or at the end
-        if (i % 10 === 0 || i === files.length - 1) {
-          self.postMessage({
-            type: "PROGRESS",
-            data: {
-              batchIndex,
-              totalBatches,
-              filesProcessed: i + 1,
-              totalFiles: files.length,
-            },
-          });
-        }
       }
 
-      // Send completed batch
+      // ✅ Send only when batch complete
       self.postMessage({
         type: "BATCH_COMPLETE",
         data: {

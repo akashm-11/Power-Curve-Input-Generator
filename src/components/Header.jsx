@@ -64,33 +64,22 @@ export default function Header({
       </div>
 
       {/* Progress bar */}
-      {/* Progress bar */}
       {processing && (
         <div className="px-8 pb-6">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-zinc-300">
-                {currentStep}
-              </span>
-              <span className="text-xs text-zinc-400">
-                Processing: {currentFile || "Initializing..."}
-              </span>
-              <span className="text-xs text-emerald-400 font-medium">
-                {filesProcessed || 0} / {selectedCount} files completed
-              </span>
-            </div>
+            <span className="text-sm font-medium text-zinc-300">
+              {currentStep || "Processing files..."}
+            </span>
             <span className="text-sm font-semibold text-emerald-400">
               {Math.round(progress)}%
             </span>
           </div>
 
-          <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden shadow-inner">
+          <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-300 ease-out shadow-lg shadow-emerald-500/50 relative overflow-hidden"
+              className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-1000"
               style={{ width: `${progress}%` }}
-            >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer" />
-            </div>
+            />
           </div>
         </div>
       )}
