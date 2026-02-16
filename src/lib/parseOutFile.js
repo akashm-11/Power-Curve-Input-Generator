@@ -131,7 +131,7 @@ export function processOpenFASTOutFiles(
   };
 }
 
-/* ======= helpers: format converters (UNCHANGED) ======= */
+// Format convert to CSV
 export function toCSV(data) {
   if (!data || !data.length) return "";
 
@@ -146,6 +146,7 @@ export function toCSV(data) {
   return [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
 }
 
+// Format convert to .fw.txt
 export function toFWTXT(data) {
   if (!data || !data.length) return "";
 

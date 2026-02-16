@@ -1,12 +1,14 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
-  createZipPackage,
-  processOpenFASTOutFiles,
+  FileProcessor,
+  createDebouncedProgress,
   toCSV,
   toFWTXT,
   toXLSXBlob,
-} from "@/lib/parseOutFile.js";
+  createZipPackage,
+  getVisibleRange,
+} from "@/lib/optimizedProcessing";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import MainPanel from "@/components/MainPanel";
@@ -18,7 +20,7 @@ const INITIAL_STATE = {
   activeFile: null,
   airDensity: 1.225,
   rotorArea: 26830,
-  formats: [], // Add formats
+  formats: [],
   processing: false,
   progress: 0,
   currentStep: "",
@@ -29,7 +31,11 @@ const INITIAL_STATE = {
   sidebarCollapsed: false,
   filesCollapsed: false,
   parametersCollapsed: false,
+  currentFile: "",
+  filesProcessed: 0,
 };
+
+const ITEM_HEIGHT = 48; // Height of each file item in pixels
 
 // Reusable Components
 const Icon = ({ path, className = "w-4 h-4" }) => (
@@ -139,7 +145,7 @@ const FormatSelector = ({ formats, toggleFormat }) => {
   );
 };
 
-// Instruction on dashboard page
+// Instruction Steps Component
 const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
   const steps = [
     {
@@ -191,7 +197,6 @@ const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
                 : "bg-zinc-800/50 border border-zinc-700"
             }`}
           >
-            {/* Connecting Line */}
             {index < steps.length - 1 && (
               <div
                 className={`absolute left-8 top-16 w-0.5 h-8 ${
@@ -200,7 +205,6 @@ const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
               />
             )}
 
-            {/* Step Number/Icon */}
             <div
               className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
                 step.completed
@@ -227,7 +231,6 @@ const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
               )}
             </div>
 
-            {/* Step Content */}
             <div className="flex-1 pt-1">
               <h3
                 className={`text-lg font-semibold mb-1 ${
@@ -238,7 +241,6 @@ const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
               </h3>
               <p className="text-sm text-zinc-400">{step.description}</p>
 
-              {/* Progress indicators */}
               {step.number === 1 && filesCount > 0 && (
                 <div className="mt-2 text-xs text-emerald-400 font-medium">
                   ✓ {filesCount} files loaded
@@ -265,10 +267,25 @@ const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
 
 export default function Home() {
   const [state, setState] = useState(INITIAL_STATE);
+  const [scrollTop, setScrollTop] = useState(0);
   const logsEndRef = useRef(null);
+  const fileProcessorRef = useRef(null);
+  const sidebarScrollRef = useRef(null);
 
-  const updateState = (updates) =>
+  const updateState = useCallback((updates) => {
     setState((prev) => ({ ...prev, ...updates }));
+  }, []);
+
+  // Initialize file processor
+  useEffect(() => {
+    fileProcessorRef.current = new FileProcessor();
+
+    return () => {
+      if (fileProcessorRef.current) {
+        fileProcessorRef.current.terminate();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -279,47 +296,72 @@ export default function Home() {
       const timer = setTimeout(() => updateState({ showLogs: false }), 2000);
       return () => clearTimeout(timer);
     }
-  }, [state.results, state.showLogs]);
+  }, [state.results, state.showLogs, updateState]);
 
-  const addLog = (message, type = "info") => {
+  const addLog = useCallback((message, type = "info") => {
     const timestamp = new Date().toLocaleTimeString();
-    updateState({ logs: [...state.logs, { message, type, timestamp }] });
-  };
+    setState((prev) => ({
+      ...prev,
+      logs: [...prev.logs, { message, type, timestamp }],
+    }));
+  }, []);
 
-  const handleFolderUpload = (e) => {
-    const outFiles = Array.from(e.target.files).filter((file) =>
-      file.name.toLowerCase().endsWith(".out"),
-    );
+  const handleFolderUpload = useCallback(
+    (e) => {
+      const outFiles = Array.from(e.target.files).filter((file) =>
+        file.name.toLowerCase().endsWith(".out"),
+      );
 
-    updateState({
-      files: outFiles,
-      selectedFiles: [],
-      activeFile: null,
-      results: null,
-      error: null,
-      logs: [],
-      progress: 0,
-      currentStep: "",
-    });
+      updateState({
+        files: outFiles,
+        selectedFiles: [],
+        activeFile: null,
+        results: null,
+        error: null,
+        logs: [],
+        progress: 0,
+        currentStep: "",
+      });
 
-    addLog(`Loaded ${outFiles.length} .out files from folder`, "success");
-  };
+      addLog(`Loaded ${outFiles.length} .out files from folder`, "success");
+    },
+    [updateState, addLog],
+  );
 
-  const toggleFileSelection = (fileName) => {
-    updateState({
-      selectedFiles: state.selectedFiles.includes(fileName)
-        ? state.selectedFiles.filter((f) => f !== fileName)
-        : [...state.selectedFiles, fileName],
-    });
-  };
+  const toggleFileSelection = useCallback((fileName) => {
+    setState((prev) => ({
+      ...prev,
+      selectedFiles: prev.selectedFiles.includes(fileName)
+        ? prev.selectedFiles.filter((f) => f !== fileName)
+        : [...prev.selectedFiles, fileName],
+    }));
+  }, []);
 
-  const toggleFormat = (format) => {
-    updateState({
-      formats: state.formats.includes(format)
-        ? state.formats.filter((f) => f !== format)
-        : [...state.formats, format],
-    });
-  };
+  const toggleFormat = useCallback((format) => {
+    setState((prev) => ({
+      ...prev,
+      formats: prev.formats.includes(format)
+        ? prev.formats.filter((f) => f !== format)
+        : [...prev.formats, format],
+    }));
+  }, []);
+
+  // Debounced progress handler
+  const handleProgress = useMemo(
+    () =>
+      createDebouncedProgress(
+        ({ progress, message, currentFile, filesProcessed }) => {
+          updateState({
+            progress: Math.round(progress),
+            currentStep: message,
+            currentFile: currentFile || state.currentFile,
+            filesProcessed: filesProcessed || state.filesProcessed,
+          });
+        },
+        50,
+      ),
+    [updateState],
+  );
 
   const handleProcessFiles = async () => {
     if (state.selectedFiles.length === 0) {
@@ -346,35 +388,37 @@ export default function Home() {
         `Starting processing of ${state.selectedFiles.length} files...`,
         "info",
       );
-      updateState({ currentStep: "Reading files...", progress: 5 });
-
-      // Read file contents (same as you had)
-      const filesWithContent = await Promise.all(
-        state.files
-          .filter((file) => state.selectedFiles.includes(file.name))
-          .map(async (file) => ({
-            name: file.name,
-            content: await file.text(),
-          })),
-      );
-
       addLog(`Air Density: ${state.airDensity} kg/m³`, "info");
       addLog(`Rotor Area: ${state.rotorArea} m²`, "info");
       addLog(`Formats: ${state.formats.join(", ").toUpperCase()}`, "info");
-      updateState({ progress: 15, currentStep: "Processing files..." });
 
-      // Process in-browser (same logic)
-      const { individualData, powerCurveData, baseName } =
-        processOpenFASTOutFiles(
-          filesWithContent,
+      const filesToProcess = state.files.filter((file) =>
+        state.selectedFiles.includes(file.name),
+      );
+
+      // Process files using Web Worker
+      const { individualData, powerCurveData } =
+        await fileProcessorRef.current.processBatches(
+          filesToProcess,
           Number(state.airDensity),
           Number(state.rotorArea),
+          handleProgress,
         );
 
-      updateState({ progress: 50, currentStep: "Generating format files..." });
+      addLog(`Processed ${individualData.length} file records`, "success");
+      addLog(
+        `Generated ${powerCurveData.length} power curve points`,
+        "success",
+      );
 
-      // For each requested format, generate two files (individual + powerCurve)
+      handleProgress({ progress: 96, message: "Generating output files..." });
+
+      // Generate format files
       const resultsByFormat = {};
+      const baseName = {
+        individual: `final_individual_${state.airDensity}`,
+        powerCurve: `final_powercurve_${state.airDensity}`,
+      };
 
       for (const fmt of state.formats) {
         let individualBlob, powerBlob, individualName, powerName, contentType;
@@ -396,15 +440,12 @@ export default function Home() {
           individualName = `${baseName.individual}.fw.txt`;
           powerName = `${baseName.powerCurve}.fw.txt`;
         } else if (fmt === "xlsx") {
-          // create XLSX blobs (async)
           individualBlob = await toXLSXBlob(individualData, "Seed Averages");
           powerBlob = await toXLSXBlob(powerCurveData, "Power Curve");
           contentType =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
           individualName = `${baseName.individual}.xlsx`;
           powerName = `${baseName.powerCurve}.xlsx`;
-        } else {
-          throw new Error("Unsupported format: " + fmt);
         }
 
         resultsByFormat[fmt] = {
@@ -420,23 +461,16 @@ export default function Home() {
           },
         };
 
-        addLog(
-          `✓ Generated ${fmt.toUpperCase()} (seed avg + power curve)`,
-          "success",
-        );
+        addLog(`✓ Generated ${fmt.toUpperCase()} files`, "success");
       }
 
-      updateState({ progress: 80, currentStep: "Creating ZIP..." });
+      handleProgress({ progress: 98, message: "Creating ZIP package..." });
 
-      // Create ZIP with JSZip
       const zipBlob = await createZipPackage(resultsByFormat);
-
-      // Save the ZIP (suggest name includes timestamp and airDensity)
       const now = new Date();
       const zipName = `${baseName.individual}_export_${now.toISOString().replace(/[:.]/g, "-")}.zip`;
       const zipUrl = URL.createObjectURL(zipBlob);
 
-      // update state results so UI can allow downloads per-file too
       updateState({
         results: {
           allResults: resultsByFormat,
@@ -449,7 +483,7 @@ export default function Home() {
         currentStep: "Complete!",
       });
 
-      addLog("Processing complete! ZIP ready for download.", "success");
+      addLog("Processing complete! All files ready for download.", "success");
     } catch (err) {
       updateState({ error: err.message, progress: 0, currentStep: "" });
       addLog(`Error: ${err.message}`, "error");
@@ -459,147 +493,148 @@ export default function Home() {
     }
   };
 
-  // // Helper function to create blob from different data types
-  // const createBlobFromData = (content, type, format) => {
-  //   if (format === "xlsx") {
-  //     // XLSX is base64 encoded
-  //     const binaryString = atob(content);
-  //     const bytes = new Uint8Array(binaryString.length);
-  //     for (let i = 0; i < binaryString.length; i++) {
-  //       bytes[i] = binaryString.charCodeAt(i);
-  //     }
-  //     return new Blob([bytes], { type });
-  //   } else {
-  //     // CSV and FW.TXT are plain text
-  //     return new Blob([content], { type });
-  //   }
-  // };
+  const downloadFile = useCallback(
+    (format, fileType) => {
+      const fileData = state.results.allResults[format][fileType];
+      addLog(`Downloading ${fileData.filename}...`, "info");
 
-  // const downloadZip = () => {
-  //   const zip = state.results?.zip;
-  //   if (!zip) return;
-  //   const a = document.createElement("a");
-  //   a.href = zip.url;
-  //   a.download = zip.filename;
-  //   a.click();
-  //   URL.revokeObjectURL(zip.url);
-  //   addLog(`Downloaded ${zip.filename}`, "success");
-  // };
+      const url = window.URL.createObjectURL(fileData.blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileData.filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
 
-  const downloadFile = (format, fileType) => {
-    const fileData = state.results.allResults[format][fileType];
-    addLog(`Downloading ${fileData.filename}...`, "info");
+      addLog(`✓ Downloaded ${fileData.filename}`, "success");
+    },
+    [state.results, addLog],
+  );
 
-    const url = window.URL.createObjectURL(fileData.blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = fileData.filename;
-    a.click();
-    window.URL.revokeObjectURL(url);
-
-    addLog(`✓ Downloaded ${fileData.filename}`, "success");
-  };
-
-  const downloadAllFiles = () => {
+  const downloadAllFiles = useCallback(() => {
     addLog("Downloading all files...", "info");
     let delay = 0;
 
     state.formats.forEach((format) => {
-      setTimeout(() => {
-        downloadFile(format, "individual");
-      }, delay);
+      setTimeout(() => downloadFile(format, "individual"), delay);
       delay += 300;
 
-      setTimeout(() => {
-        downloadFile(format, "powerCurve");
-      }, delay);
+      setTimeout(() => downloadFile(format, "powerCurve"), delay);
       delay += 300;
     });
-  };
+  }, [state.formats, downloadFile, addLog]);
 
-  const renderFileItem = (file, index) => {
-    const isSelected = state.selectedFiles.includes(file.name);
-    const isActive = state.activeFile?.name === file.name;
+  // Virtual scrolling for file list
+  const visibleFiles = useMemo(() => {
+    if (!sidebarScrollRef.current) return state.files;
 
-    return (
-      <div
-        key={index}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all ${
-          isActive
-            ? "bg-zinc-800 border-zinc-700 shadow-lg ring-2 ring-emerald-500/50"
-            : isSelected
-              ? "bg-emerald-500/10 border-emerald-500/30 shadow-md"
-              : "bg-zinc-800/50 border-zinc-700/50 hover:border-zinc-600 hover:bg-zinc-800"
-        }`}
-      >
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => toggleFileSelection(file.name)}
-          className="w-4 h-4 text-emerald-500 bg-zinc-700 border-zinc-600 rounded focus:ring-emerald-500 focus:ring-offset-0 focus:ring-offset-zinc-900"
-        />
-
-        <div
-          className="flex-1 truncate text-sm"
-          onClick={() => updateState({ activeFile: file })}
-          title={file.name}
-        >
-          <span
-            className={
-              isSelected ? "text-emerald-300 font-medium" : "text-zinc-300"
-            }
-          >
-            {file.name}
-          </span>
-        </div>
-      </div>
+    const containerHeight = sidebarScrollRef.current.clientHeight || 600;
+    const { start, end } = getVisibleRange(
+      scrollTop,
+      ITEM_HEIGHT,
+      containerHeight,
+      state.files.length,
     );
-  };
 
-  const renderConfigBanner = () => (
-    <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-4">
-      <div className="flex items-start gap-3 mb-3">
-        <div className="p-2 bg-zinc-700/50 rounded-lg">
-          <Icon path="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </div>
-        <div className="flex-1">
-          <h3 className="text-sm font-semibold text-zinc-200 mb-3">
-            Processing Configuration
-          </h3>
+    return state.files.slice(start, end).map((file, idx) => ({
+      file,
+      index: start + idx,
+    }));
+  }, [state.files, scrollTop]);
 
-          <div className="grid grid-cols-3 gap-4 mb-3">
-            <StatCard
-              label="Air Density"
-              value={state.results.processedAirDensity}
-              unit="kg/m³"
-            />
-            <StatCard
-              label="Rotor Area"
-              value={state.results.processedRotorArea}
-              unit="m²"
-            />
-            <StatCard
-              label="Formats"
-              value={state.results.processedFormats.length}
-              unit={`format${state.results.processedFormats.length !== 1 ? "s" : ""}`}
-            />
-          </div>
+  const handleScroll = useCallback((e) => {
+    setScrollTop(e.target.scrollTop);
+  }, []);
 
-          <div className="flex items-center gap-6 text-xs text-zinc-400 pt-3 border-t border-zinc-700/50">
-            <span>{state.selectedFiles.length} files processed</span>
-            <span>
-              Formats: {state.results.processedFormats.join(", ").toUpperCase()}
+  const renderFileItem = useCallback(
+    (file, index) => {
+      const isSelected = state.selectedFiles.includes(file.name);
+      const isActive = state.activeFile?.name === file.name;
+
+      return (
+        <div
+          key={index}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all ${
+            isActive
+              ? "bg-zinc-800 border-zinc-700 shadow-lg ring-2 ring-emerald-500/50"
+              : isSelected
+                ? "bg-emerald-500/10 border-emerald-500/30 shadow-md"
+                : "bg-zinc-800/50 border-zinc-700/50 hover:border-zinc-600 hover:bg-zinc-800"
+          }`}
+          style={{ height: `${ITEM_HEIGHT}px` }}
+        >
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => toggleFileSelection(file.name)}
+            className="w-4 h-4 text-emerald-500 bg-zinc-700 border-zinc-600 rounded focus:ring-emerald-500 focus:ring-offset-0 focus:ring-offset-zinc-900"
+          />
+
+          <div
+            className="flex-1 truncate text-sm"
+            onClick={() => updateState({ activeFile: file })}
+            title={file.name}
+          >
+            <span
+              className={
+                isSelected ? "text-emerald-300 font-medium" : "text-zinc-300"
+              }
+            >
+              {file.name}
             </span>
-            <span>Total files: {state.formats.length * 2}</span>
+          </div>
+        </div>
+      );
+    },
+    [state.selectedFiles, state.activeFile, toggleFileSelection, updateState],
+  );
+
+  const renderConfigBanner = useCallback(
+    () => (
+      <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-lg p-4">
+        <div className="flex items-start gap-3 mb-3">
+          <div className="p-2 bg-zinc-700/50 rounded-lg">
+            <Icon path="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-zinc-200 mb-3">
+              Processing Configuration
+            </h3>
+
+            <div className="grid grid-cols-3 gap-4 mb-3">
+              <StatCard
+                label="Air Density"
+                value={state.results.processedAirDensity}
+                unit="kg/m³"
+              />
+              <StatCard
+                label="Rotor Area"
+                value={state.results.processedRotorArea}
+                unit="m²"
+              />
+              <StatCard
+                label="Formats"
+                value={state.results.processedFormats.length}
+                unit={`format${state.results.processedFormats.length !== 1 ? "s" : ""}`}
+              />
+            </div>
+
+            <div className="flex items-center gap-6 text-xs text-zinc-400 pt-3 border-t border-zinc-700/50">
+              <span>{state.selectedFiles.length} files processed</span>
+              <span>
+                Formats:{" "}
+                {state.results.processedFormats.join(", ").toUpperCase()}
+              </span>
+              <span>Total files: {state.formats.length * 2}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    ),
+    [state.results, state.selectedFiles.length, state.formats.length],
   );
 
   return (
     <div className="h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex flex-col overflow-hidden font-sans antialiased">
-      {/* Header */}
       <Header
         selectedCount={state.selectedFiles.length}
         totalCount={state.files.length}
@@ -607,15 +642,15 @@ export default function Home() {
         progress={state.progress}
         currentStep={state.currentStep}
         formatsCount={state.formats.length}
+        currentFile={state.currentFile} // ✅ ADD THIS
+        filesProcessed={state.filesProcessed}
         onProcessFiles={handleProcessFiles}
         onFolderUpload={handleFolderUpload}
         Icon={Icon}
         Button={Button}
       />
 
-      {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
         <Sidebar
           files={state.files}
           selectedFiles={state.selectedFiles}
@@ -641,11 +676,14 @@ export default function Home() {
             );
           }}
           renderFileItem={renderFileItem}
+          visibleFiles={visibleFiles}
+          onScroll={handleScroll}
+          sidebarScrollRef={sidebarScrollRef}
+          totalHeight={state.files.length * ITEM_HEIGHT}
           Icon={Icon}
           Button={Button}
         />
 
-        {/* Main Panel */}
         <MainPanel
           state={state}
           toggleFormat={toggleFormat}
@@ -660,75 +698,6 @@ export default function Home() {
           FormatSelector={FormatSelector}
         />
       </div>
-
-      <style jsx global>{`
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
-
-        * {
-          font-family:
-            "Inter",
-            -apple-system,
-            BlinkMacSystemFont,
-            "Segoe UI",
-            "Roboto",
-            "Helvetica Neue",
-            Arial,
-            sans-serif;
-        }
-
-        @keyframes shimmer {
-          0% {
-            transform: translateX(-100%);
-          }
-          100% {
-            transform: translateX(100%);
-          }
-        }
-        .animate-shimmer {
-          animation: shimmer 2s infinite;
-        }
-
-        ::-webkit-scrollbar {
-          width: 10px;
-          height: 10px;
-        }
-
-        ::-webkit-scrollbar-track {
-          background: rgba(15, 23, 42, 0.5);
-          border-radius: 6px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-          background: linear-gradient(
-            180deg,
-            rgba(71, 85, 105, 0.6) 0%,
-            rgba(51, 65, 85, 0.6) 100%
-          );
-          border-radius: 6px;
-          border: 2px solid rgba(15, 23, 42, 0.5);
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(
-            180deg,
-            rgba(71, 85, 105, 0.8) 0%,
-            rgba(51, 65, 85, 0.8) 100%
-          );
-        }
-
-        ::-webkit-scrollbar-thumb:active {
-          background: linear-gradient(
-            180deg,
-            rgba(100, 116, 139, 0.9) 0%,
-            rgba(71, 85, 105, 0.9) 100%
-          );
-        }
-
-        * {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(71, 85, 105, 0.6) rgba(15, 23, 42, 0.5);
-        }
-      `}</style>
     </div>
   );
 }
