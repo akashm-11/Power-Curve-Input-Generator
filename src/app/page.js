@@ -7,6 +7,9 @@ import {
   toFWTXT,
   toXLSXBlob,
 } from "@/lib/parseOutFile.js";
+import Header from "@/components/Header";
+import Sidebar from "@/components/Sidebar";
+import MainPanel from "@/components/MainPanel";
 
 // Constants
 const INITIAL_STATE = {
@@ -136,20 +139,7 @@ const FormatSelector = ({ formats, toggleFormat }) => {
   );
 };
 
-const TableHeader = ({ children }) => (
-  <th className="px-6 py-3 text-left text-xs font-semibold text-zinc-300 uppercase tracking-wider">
-    {children}
-  </th>
-);
-
-const TableCell = ({ children, bold = false }) => (
-  <td
-    className={`px-6 py-4 text-zinc-300 ${bold ? "font-medium text-zinc-100" : ""}`}
-  >
-    {children}
-  </td>
-);
-
+// Instruction on dashboard page
 const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
   const steps = [
     {
@@ -268,34 +258,6 @@ const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="mt-8 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-        <div className="flex items-start space-x-3">
-          <svg
-            className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <h4 className="text-sm font-semibold text-blue-400 mb-1">
-              Pro Tip
-            </h4>
-            <p className="text-xs text-zinc-400">
-              You can use "Select All" button in the sidebar to quickly select
-              all uploaded files, or choose specific files for targeted
-              analysis.
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -497,32 +459,32 @@ export default function Home() {
     }
   };
 
-  // Helper function to create blob from different data types
-  const createBlobFromData = (content, type, format) => {
-    if (format === "xlsx") {
-      // XLSX is base64 encoded
-      const binaryString = atob(content);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return new Blob([bytes], { type });
-    } else {
-      // CSV and FW.TXT are plain text
-      return new Blob([content], { type });
-    }
-  };
+  // // Helper function to create blob from different data types
+  // const createBlobFromData = (content, type, format) => {
+  //   if (format === "xlsx") {
+  //     // XLSX is base64 encoded
+  //     const binaryString = atob(content);
+  //     const bytes = new Uint8Array(binaryString.length);
+  //     for (let i = 0; i < binaryString.length; i++) {
+  //       bytes[i] = binaryString.charCodeAt(i);
+  //     }
+  //     return new Blob([bytes], { type });
+  //   } else {
+  //     // CSV and FW.TXT are plain text
+  //     return new Blob([content], { type });
+  //   }
+  // };
 
-  const downloadZip = () => {
-    const zip = state.results?.zip;
-    if (!zip) return;
-    const a = document.createElement("a");
-    a.href = zip.url;
-    a.download = zip.filename;
-    a.click();
-    URL.revokeObjectURL(zip.url);
-    addLog(`Downloaded ${zip.filename}`, "success");
-  };
+  // const downloadZip = () => {
+  //   const zip = state.results?.zip;
+  //   if (!zip) return;
+  //   const a = document.createElement("a");
+  //   a.href = zip.url;
+  //   a.download = zip.filename;
+  //   a.click();
+  //   URL.revokeObjectURL(zip.url);
+  //   addLog(`Downloaded ${zip.filename}`, "success");
+  // };
 
   const downloadFile = (format, fileType) => {
     const fileData = state.results.allResults[format][fileType];
@@ -638,412 +600,65 @@ export default function Home() {
   return (
     <div className="h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 flex flex-col overflow-hidden font-sans antialiased">
       {/* Header */}
-      <header className="bg-zinc-900/80 backdrop-blur-xl border-b border-zinc-800 shadow-2xl">
-        <div className="px-4 py-1">
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-zinc-100 tracking-tight">
-              Power Curve Input Generator
-            </h1>
-
-            <div className="flex items-center gap-4">
-              <div className="bg-zinc-800/50 px-4 py-2 rounded-lg border border-zinc-700">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-400">Selected:</span>
-                  <span className="text-lg font-bold text-emerald-400">
-                    {state.selectedFiles.length}
-                  </span>
-                  <span className="text-xs text-zinc-500">
-                    / {state.files.length}
-                  </span>
-                </div>
-              </div>
-
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  webkitdirectory="true"
-                  directory=""
-                  multiple
-                  onChange={handleFolderUpload}
-                  className="hidden"
-                />
-                <span className="inline-flex items-center gap-2 bg-blue-500 text-zinc-100 px-5 py-3 rounded-lg text-sm font-medium hover:bg-blue-600 transition-all shadow-lg">
-                  <Icon path="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  Upload Folder
-                </span>
-              </label>
-
-              <Button
-                onClick={handleProcessFiles}
-                disabled={
-                  state.processing ||
-                  state.selectedFiles.length === 0 ||
-                  state.formats.length === 0
-                }
-                className="px-6 py-3 font-semibold"
-              >
-                <Icon path="M13 10V3L4 14h7v7l9-11h-7z" />
-                {state.processing ? "Processing..." : "Generate Files"}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Progress Bar */}
-        {state.processing && (
-          <div className="px-8 pb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-zinc-300">
-                {state.currentStep}
-              </span>
-              <span className="text-sm font-semibold text-emerald-400">
-                {Math.round(state.progress)}%
-              </span>
-            </div>
-            <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden shadow-inner">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-500 ease-out shadow-lg shadow-emerald-500/50 relative overflow-hidden"
-                style={{ width: `${state.progress}%` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-shimmer"></div>
-              </div>
-            </div>
-          </div>
-        )}
-      </header>
+      <Header
+        selectedCount={state.selectedFiles.length}
+        totalCount={state.files.length}
+        processing={state.processing}
+        progress={state.progress}
+        currentStep={state.currentStep}
+        formatsCount={state.formats.length}
+        onProcessFiles={handleProcessFiles}
+        onFolderUpload={handleFolderUpload}
+        Icon={Icon}
+        Button={Button}
+      />
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside
-          className={`bg-zinc-900/50 backdrop-blur-xl border-r border-zinc-800 flex flex-col overflow-hidden shadow-2xl transition-all duration-300 ${
-            state.sidebarCollapsed ? "w-16" : "w-85"
-          }`}
-        >
-          <div className="px-4 py-1 border-b border-zinc-800 flex items-center justify-between flex-shrink-0">
-            {!state.sidebarCollapsed && (
-              <h2 className="text-sm text-zinc-200 uppercase tracking-wide">
-                File Manager
-              </h2>
-            )}
-            <button
-              onClick={() =>
-                updateState({ sidebarCollapsed: !state.sidebarCollapsed })
-              }
-              className="p-2 hover:bg-zinc-800 rounded-lg transition-all text-zinc-400 hover:text-zinc-200"
-            >
-              <Icon
-                path="M11 19l-7-7 7-7m8 14l-7-7 7-7"
-                className={`w-5 h-5 transition-transform ${state.sidebarCollapsed ? "rotate-180" : ""}`}
-              />
-            </button>
-          </div>
-
-          {!state.sidebarCollapsed ? (
-            <div
-              className={`flex flex-col border-b border-zinc-800 transition-all duration-300 ${
-                state.filesCollapsed ? "flex-shrink-0" : "flex-1 min-h-0"
-              }`}
-            >
-              <div className="px-4 py-1 border-b border-zinc-800 flex items-center justify-between bg-zinc-800/30 flex-shrink-0">
-                <h3 className="text-sm text-zinc-200 uppercase tracking-wide">
-                  Output Files{" "}
-                  {state.files.length > 0 && `(${state.files.length})`}
-                </h3>
-                <button
-                  onClick={() =>
-                    updateState({ filesCollapsed: !state.filesCollapsed })
-                  }
-                  className="p-1.5 hover:bg-zinc-700 rounded-lg transition-all text-zinc-400 hover:text-zinc-200"
-                >
-                  <Icon
-                    path="M19 9l-7 7-7-7"
-                    className={`transition-transform ${state.filesCollapsed ? "rotate-180" : ""}`}
-                  />
-                </button>
-              </div>
-
-              {!state.filesCollapsed && (
-                <>
-                  {state.files.length > 0 && (
-                    <div className="px-4 py-3 border-b border-zinc-800 flex-shrink-0">
-                      <Button
-                        onClick={() => {
-                          const allSelected =
-                            state.selectedFiles.length === state.files.length;
-                          updateState({
-                            selectedFiles: allSelected
-                              ? []
-                              : state.files.map((f) => f.name),
-                          });
-                          addLog(
-                            allSelected
-                              ? "Deselected all files"
-                              : `Selected all ${state.files.length} files`,
-                            "info",
-                          );
-                        }}
-                        variant="ghost"
-                        className="w-full text-xs"
-                      >
-                        {state.selectedFiles.length === state.files.length
-                          ? "Deselect All"
-                          : "Select All"}
-                      </Button>
-                    </div>
-                  )}
-
-                  <div className="flex-1 overflow-y-auto p-4 space-y-2 min-h-0">
-                    {state.files.length === 0 ? (
-                      <div className="text-center py-12">
-                        <Icon
-                          path="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                          className="w-12 h-12 mx-auto text-zinc-700 mb-3"
-                        />
-                        <p className="text-xs text-zinc-400 font-medium">
-                          No folder selected
-                        </p>
-                        <p className="text-xs text-zinc-500 mt-1">
-                          Upload to get started
-                        </p>
-                      </div>
-                    ) : (
-                      state.files.map(renderFileItem)
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center p-4">
-              <div className="text-center">
-                <Icon
-                  path="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                  className="w-8 h-8 mx-auto text-zinc-600 mb-2"
-                />
-                <p className="text-xs text-zinc-500 transform rotate-90 whitespace-nowrap mt-4">
-                  {state.files.length} files
-                </p>
-              </div>
-            </div>
-          )}
-        </aside>
+        <Sidebar
+          files={state.files}
+          selectedFiles={state.selectedFiles}
+          sidebarCollapsed={state.sidebarCollapsed}
+          filesCollapsed={state.filesCollapsed}
+          onToggleSidebar={() =>
+            updateState({ sidebarCollapsed: !state.sidebarCollapsed })
+          }
+          onToggleFiles={() =>
+            updateState({ filesCollapsed: !state.filesCollapsed })
+          }
+          onSelectAllToggle={() => {
+            const allSelected =
+              state.selectedFiles.length === state.files.length;
+            updateState({
+              selectedFiles: allSelected ? [] : state.files.map((f) => f.name),
+            });
+            addLog(
+              allSelected
+                ? "Deselected all files"
+                : `Selected all ${state.files.length} files`,
+              "info",
+            );
+          }}
+          renderFileItem={renderFileItem}
+          Icon={Icon}
+          Button={Button}
+        />
 
         {/* Main Panel */}
-        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <div className="flex-1 overflow-y-auto p-8">
-            {state.error && (
-              <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-5 shadow-lg">
-                <div className="flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  <div>
-                    <div className="font-semibold text-red-300 mb-1">
-                      Processing Error
-                    </div>
-                    <div className="text-sm text-red-400">{state.error}</div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {!state.results && !state.processing && (
-              <>
-                <InstructionSteps
-                  filesCount={state.files.length}
-                  selectedCount={state.selectedFiles.length}
-                  formatsCount={state.formats.length}
-                />
-
-                {/* Parameters and Format Selector */}
-                {state.files.length > 0 && (
-                  <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Parameters */}
-                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm">
-                      <h3 className="text-lg font-semibold text-zinc-100 mb-4">
-                        Parameters
-                      </h3>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-300 mb-2">
-                            Air Density (kg/m³)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.001"
-                            min="0.5"
-                            max="2.0"
-                            value={state.airDensity}
-                            onChange={(e) =>
-                              updateState({
-                                airDensity: Number(e.target.value),
-                              })
-                            }
-                            className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-zinc-300 mb-2">
-                            Rotor Area (m²)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="1"
-                            max="50000"
-                            value={state.rotorArea}
-                            onChange={(e) =>
-                              updateState({ rotorArea: Number(e.target.value) })
-                            }
-                            className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                          />
-                          <p className="text-xs text-zinc-500 mt-1">
-                            NREL 5MW: 28630
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Format Selector */}
-                    <FormatSelector
-                      formats={state.formats}
-                      toggleFormat={toggleFormat}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-
-            {state.results && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-semibold text-zinc-100 flex items-center gap-2">
-                      <svg
-                        className="w-7 h-7 text-emerald-400"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      Processing Complete
-                    </h2>
-                    <p className="text-sm text-zinc-400 mt-1">
-                      {state.formats.length * 2} files ready for download
-                    </p>
-                  </div>
-
-                  <Button onClick={downloadAllFiles}>
-                    <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    Download All Files
-                  </Button>
-                </div>
-
-                {renderConfigBanner()}
-
-                {/* Download Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {state.formats.map((format) => (
-                    <div
-                      key={format}
-                      className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm"
-                    >
-                      <h3 className="text-lg font-semibold text-zinc-100 mb-4 uppercase">
-                        {format}
-                      </h3>
-                      <div className="space-y-3">
-                        <Button
-                          onClick={() => downloadFile(format, "individual")}
-                          variant="secondary"
-                          className="w-full justify-center"
-                        >
-                          <Icon path="M12 10v6m0 0l-3-3m3 3l3-3" />
-                          Seed Averages
-                        </Button>
-                        <Button
-                          onClick={() => downloadFile(format, "powerCurve")}
-                          variant="secondary"
-                          className="w-full justify-center"
-                        >
-                          <Icon path="M12 10v6m0 0l-3-3m3 3l3-3" />
-                          Power Curve
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Logs Panel */}
-          {state.logs.length > 0 && (
-            <div
-              className={`border-t border-zinc-800 bg-zinc-900/50 backdrop-blur-xl flex flex-col transition-all duration-300 ${
-                state.showLogs ? "h-64" : "h-12"
-              } flex-shrink-0`}
-            >
-              <div className="px-6 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/70">
-                <h3 className="text-sm font-semibold text-zinc-200 uppercase tracking-wide">
-                  Processing Logs {!state.showLogs && `(${state.logs.length})`}
-                </h3>
-                <div className="flex items-center gap-2">
-                  {state.showLogs && (
-                    <button
-                      onClick={() => updateState({ logs: [] })}
-                      className="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-all font-medium shadow-lg"
-                    >
-                      Clear Logs
-                    </button>
-                  )}
-                  <button
-                    onClick={() => updateState({ showLogs: !state.showLogs })}
-                    className="p-1.5 hover:bg-zinc-800 rounded-lg transition-all text-zinc-400 hover:text-zinc-200"
-                  >
-                    <Icon
-                      path="M19 9l-7 7-7-7"
-                      className={`transition-transform ${state.showLogs ? "" : "rotate-180"}`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {state.showLogs && (
-                <div className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-xs">
-                  {state.logs.map((log, index) => (
-                    <div
-                      key={index}
-                      className={`flex gap-3 px-3 py-2 rounded-lg ${
-                        log.type === "error"
-                          ? "bg-red-500/10 text-red-300 border border-red-500/20"
-                          : log.type === "success"
-                            ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
-                            : "bg-zinc-800/50 text-zinc-300 border border-zinc-700/50"
-                      }`}
-                    >
-                      <span className="text-zinc-500">[{log.timestamp}]</span>
-                      <span className="flex-1">{log.message}</span>
-                    </div>
-                  ))}
-                  <div ref={logsEndRef} />
-                </div>
-              )}
-            </div>
-          )}
-        </main>
+        <MainPanel
+          state={state}
+          toggleFormat={toggleFormat}
+          downloadAllFiles={downloadAllFiles}
+          downloadFile={downloadFile}
+          renderConfigBanner={renderConfigBanner}
+          updateState={updateState}
+          logsEndRef={logsEndRef}
+          Icon={Icon}
+          Button={Button}
+          InstructionSteps={InstructionSteps}
+          FormatSelector={FormatSelector}
+        />
       </div>
 
       <style jsx global>{`
