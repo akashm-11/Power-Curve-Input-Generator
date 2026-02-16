@@ -396,7 +396,7 @@ export default function Home() {
 
       updateState({
         progress: 15,
-        currentStep: "Processing all formats...",
+        currentStep: "Processing ...",
       });
 
       // SINGLE API CALL for all formats

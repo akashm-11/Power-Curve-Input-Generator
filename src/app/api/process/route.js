@@ -4,6 +4,8 @@ import { convertDataToFormat } from "@/lib/formatConverters.js";
 export const runtime = "nodejs";
 
 export async function POST(req) {
+  console.log("Content-Length:", req.headers.get("content-length"));
+
   try {
     const body = await req.json();
     const {
