@@ -330,6 +330,25 @@ export default function Home() {
               m/s
             </span>
             <span>
+              Avg Speed:{" "}
+              {(
+                state.results.powerCurve.reduce(
+                  (sum, r) => sum + r.windSpeed,
+                  0,
+                ) / state.results.powerCurve.length
+              ).toFixed(2)}{" "}
+              m/s
+            </span>
+
+            <span>
+              Max Speed:{" "}
+              {Math.max(
+                ...state.results.powerCurve.map((r) => r.windSpeed),
+              ).toFixed(2)}{" "}
+              m/s
+            </span>
+
+            <span>
               Max Power:{" "}
               {Math.max(
                 ...state.results.powerCurve.map((r) => r.power),
@@ -628,14 +647,14 @@ export default function Home() {
                       value: state.airDensity,
                       setter: "airDensity",
                       step: 0.001,
-                      desc: "Standard air density at sea level",
+                      desc: "Use Air Density used in simulation.",
                     },
                     {
                       label: "Rotor Area (m²)",
                       value: state.rotorArea,
                       setter: "rotorArea",
                       step: 1,
-                      desc: "Total swept area of the rotor",
+                      desc: "For uploaded file will be calculated, this is standard.",
                     },
                   ].map(({ label, value, setter, step, desc }) => (
                     <div key={setter}>
