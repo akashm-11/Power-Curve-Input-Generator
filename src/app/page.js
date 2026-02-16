@@ -8,6 +8,7 @@ const INITIAL_STATE = {
   activeFile: null,
   airDensity: 1.225,
   rotorArea: 26830,
+  formats: [], // Add formats
   processing: false,
   progress: 0,
   currentStep: "",
@@ -73,6 +74,61 @@ const StatCard = ({ label, value, unit }) => (
   </div>
 );
 
+// Format Selector Component
+const FormatSelector = ({ formats, toggleFormat }) => {
+  const items = [
+    { key: "csv", label: "CSV", desc: "Comma-Separated", icon: "📊" },
+    { key: "xlsx", label: "XLSX", desc: "Excel Workbook", icon: "📗" },
+    { key: "fw.txt", label: "FW.TXT", desc: "Fixed-Width Text", icon: "📝" },
+  ];
+
+  return (
+    <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-zinc-100">Output Formats</h3>
+        <div className="px-3 py-1 bg-emerald-500/20 border border-emerald-500/30 rounded-full text-xs font-semibold text-emerald-400">
+          {formats.length} selected
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {items.map((it) => {
+          const active = formats.includes(it.key);
+          return (
+            <button
+              key={it.key}
+              onClick={() => toggleFormat(it.key)}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                active
+                  ? "bg-emerald-500/10 border-emerald-500/30 shadow-lg shadow-emerald-900/20"
+                  : "bg-zinc-800/50 border-zinc-700/50 hover:border-zinc-600 hover:bg-zinc-800"
+              }`}
+            >
+              <div className="text-2xl">{it.icon}</div>
+              <div className="flex-1 text-left">
+                <div className="font-medium text-zinc-100">{it.label}</div>
+                <div className="text-xs text-zinc-400">{it.desc}</div>
+              </div>
+              {active && (
+                <div className="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center">
+                  <Icon path="M5 13l4 4L19 7" className="w-4 h-4 text-white" />
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 p-3 rounded-lg bg-blue-500/10 border border-blue-500/30">
+        <div className="text-xs text-zinc-300 leading-relaxed">
+          💡 Two files will be generated for each format: seed averages and
+          power curve data.
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TableHeader = ({ children }) => (
   <th className="px-6 py-3 text-left text-xs font-semibold text-zinc-300 uppercase tracking-wider">
     {children}
@@ -87,7 +143,7 @@ const TableCell = ({ children, bold = false }) => (
   </td>
 );
 
-const InstructionSteps = ({ filesCount, selectedCount }) => {
+const InstructionSteps = ({ filesCount, selectedCount, formatsCount }) => {
   const steps = [
     {
       number: 1,
@@ -105,6 +161,13 @@ const InstructionSteps = ({ filesCount, selectedCount }) => {
     },
     {
       number: 3,
+      title: "Choose Formats",
+      description: "Select output formats for your data",
+      completed: formatsCount > 0,
+      icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
+    },
+    {
+      number: 4,
       title: "Generate Files",
       description: "Click 'Generate Files' to start processing",
       completed: false,
@@ -187,6 +250,12 @@ const InstructionSteps = ({ filesCount, selectedCount }) => {
               {step.number === 2 && selectedCount > 0 && (
                 <div className="mt-2 text-xs text-emerald-400 font-medium">
                   ✓ {selectedCount} files selected
+                </div>
+              )}
+              {step.number === 3 && formatsCount > 0 && (
+                <div className="mt-2 text-xs text-emerald-400 font-medium">
+                  ✓ {formatsCount} format{formatsCount !== 1 ? "s" : ""}{" "}
+                  selected
                 </div>
               )}
             </div>
@@ -275,9 +344,22 @@ export default function Home() {
     });
   };
 
+  const toggleFormat = (format) => {
+    updateState({
+      formats: state.formats.includes(format)
+        ? state.formats.filter((f) => f !== format)
+        : [...state.formats, format],
+    });
+  };
+
   const handleProcessFiles = async () => {
     if (state.selectedFiles.length === 0) {
       alert("Please select files to process");
+      return;
+    }
+
+    if (state.formats.length === 0) {
+      alert("Please select at least one output format");
       return;
     }
 
@@ -298,75 +380,100 @@ export default function Home() {
       );
       updateState({ currentStep: "Preparing files...", progress: 5 });
 
-      const formData = new FormData();
-      state.files.forEach((file) => {
-        if (state.selectedFiles.includes(file.name))
-          formData.append("files", file);
-      });
-
-      formData.append("airDensity", state.airDensity);
-      formData.append("rotorArea", state.rotorArea);
+      // Read file contents
+      const filesWithContent = await Promise.all(
+        state.files
+          .filter((file) => state.selectedFiles.includes(file.name))
+          .map(async (file) => ({
+            name: file.name,
+            content: await file.text(),
+          })),
+      );
 
       addLog(`Air Density: ${state.airDensity} kg/m³`, "info");
       addLog(`Rotor Area: ${state.rotorArea} m²`, "info");
+      addLog(`Formats: ${state.formats.join(", ").toUpperCase()}`, "info");
+
       updateState({
         progress: 15,
-        currentStep: "Uploading and parsing files...",
+        currentStep: "Processing all formats...",
       });
+
+      // SINGLE API CALL for all formats
+      const body = {
+        files: filesWithContent,
+        formats: state.formats, // Send all formats at once
+        airDensity: state.airDensity,
+        rotorArea: state.rotorArea,
+      };
 
       const response = await fetch("/api/process", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
 
-      updateState({ progress: 60, currentStep: "Processing data..." });
-      addLog(`Analyzing data and calculating averages...`, "info");
+      updateState({ progress: 60, currentStep: "Generating files..." });
 
-      const data = await response.json();
-      updateState({ progress: 85 });
-
-      if (!response.ok) throw new Error(data.error || "Processing failed");
-
-      addLog(`Successfully processed ${data.filesProcessed} files`, "success");
-      addLog(
-        `Generated power curve with ${data.powerCurve.length} data points`,
-        "success",
-      );
-
-      if (data.globalRtAreaMean !== undefined) {
-        addLog(
-          `Global RtArea Mean: ${data.globalRtAreaMean.toFixed(4)} m²`,
-          "success",
-        );
-      }
-      if (data.globalRtAreaMax !== undefined) {
-        addLog(
-          `Global RtArea Max: ${data.globalRtAreaMax.toFixed(4)} m²`,
-          "success",
-        );
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Processing failed");
       }
 
-      if (data.powerCurve.length > 0) {
-        const maxPower = Math.max(...data.powerCurve.map((r) => r.power));
-        const avgCp = (
-          data.powerCurve.reduce((sum, r) => sum + r.cp, 0) /
-          data.powerCurve.length
-        ).toFixed(4);
-        addLog(`Maximum power: ${maxPower.toFixed(2)} kW`, "success");
-        addLog(`Average Cp: ${avgCp}`, "success");
+      const results = await response.json();
+
+      updateState({ progress: 80, currentStep: "Preparing downloads..." });
+
+      // Convert response data to blobs
+      const allResults = {};
+
+      for (const format of state.formats) {
+        const formatData = results[format];
+
+        // Convert individual file
+        const individualBlob = createBlobFromData(
+          formatData.individual.content,
+          formatData.individual.type,
+          format,
+        );
+
+        // Convert power curve file
+        const powerCurveBlob = createBlobFromData(
+          formatData.powerCurve.content,
+          formatData.powerCurve.type,
+          format,
+        );
+
+        allResults[format] = {
+          individual: {
+            blob: individualBlob,
+            filename: formatData.individual.filename,
+          },
+          powerCurve: {
+            blob: powerCurveBlob,
+            filename: formatData.powerCurve.filename,
+          },
+        };
+
+        addLog(
+          `✓ Generated ${format.toUpperCase()} files (seed averages + power curve)`,
+          "success",
+        );
       }
 
       updateState({
         results: {
-          ...data,
+          allResults,
           processedAirDensity: state.airDensity,
           processedRotorArea: state.rotorArea,
+          processedFormats: state.formats,
         },
         progress: 100,
         currentStep: "Complete!",
       });
 
       addLog(`Processing complete! Results ready for download.`, "success");
+      addLog(`Total files generated: ${state.formats.length * 2}`, "success");
     } catch (err) {
       updateState({ error: err.message, progress: 0, currentStep: "" });
       addLog(`Error: ${err.message}`, "error");
@@ -376,16 +483,51 @@ export default function Home() {
     }
   };
 
-  const downloadCSV = (data, filename) => {
-    addLog(`Downloading ${filename}...`, "info");
-    const blob = new Blob([data], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
+  // Helper function to create blob from different data types
+  const createBlobFromData = (content, type, format) => {
+    if (format === "xlsx") {
+      // XLSX is base64 encoded
+      const binaryString = atob(content);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return new Blob([bytes], { type });
+    } else {
+      // CSV and FW.TXT are plain text
+      return new Blob([content], { type });
+    }
+  };
+
+  const downloadFile = (format, fileType) => {
+    const fileData = state.results.allResults[format][fileType];
+    addLog(`Downloading ${fileData.filename}...`, "info");
+
+    const url = window.URL.createObjectURL(fileData.blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = fileData.filename;
     a.click();
     window.URL.revokeObjectURL(url);
-    addLog(`Downloaded ${filename}`, "success");
+
+    addLog(`✓ Downloaded ${fileData.filename}`, "success");
+  };
+
+  const downloadAllFiles = () => {
+    addLog("Downloading all files...", "info");
+    let delay = 0;
+
+    state.formats.forEach((format) => {
+      setTimeout(() => {
+        downloadFile(format, "individual");
+      }, delay);
+      delay += 300;
+
+      setTimeout(() => {
+        downloadFile(format, "powerCurve");
+      }, delay);
+      delay += 300;
+    });
   };
 
   const renderFileItem = (file, index) => {
@@ -438,113 +580,31 @@ export default function Home() {
             Processing Configuration
           </h3>
 
-          <div className="grid grid-cols-4 gap-4 mb-3">
+          <div className="grid grid-cols-3 gap-4 mb-3">
             <StatCard
               label="Air Density"
-              value={state.airDensity}
+              value={state.results.processedAirDensity}
               unit="kg/m³"
             />
-            {/* <StatCard label="Rotor Area" value={state.rotorArea} unit="m²" /> */}
             <StatCard
-              label="RtArea Mean"
-              value={state.results?.globalRtAreaMean?.toFixed(2) || "N/A"}
+              label="Rotor Area"
+              value={state.results.processedRotorArea}
               unit="m²"
             />
             <StatCard
-              label="RtArea Max"
-              value={state.results?.globalRtAreaMax?.toFixed(2) || "N/A"}
-              unit="m²"
+              label="Formats"
+              value={state.results.processedFormats.length}
+              unit={`format${state.results.processedFormats.length !== 1 ? "s" : ""}`}
             />
           </div>
 
           <div className="flex items-center gap-6 text-xs text-zinc-400 pt-3 border-t border-zinc-700/50">
-            <span>{state.results?.filesProcessed} files processed</span>
-            <span>{state.results?.powerCurve.length} wind speed groups</span>
+            <span>{state.selectedFiles.length} files processed</span>
             <span>
-              Min Speed:{" "}
-              {Math.min(
-                ...state.results.powerCurve.map((r) => r.windSpeed),
-              ).toFixed(2)}{" "}
-              m/s
+              Formats: {state.results.processedFormats.join(", ").toUpperCase()}
             </span>
-            <span>
-              Avg Speed:{" "}
-              {(
-                state.results.powerCurve.reduce(
-                  (sum, r) => sum + r.windSpeed,
-                  0,
-                ) / state.results.powerCurve.length
-              ).toFixed(2)}{" "}
-              m/s
-            </span>
-
-            <span>
-              Max Speed:{" "}
-              {Math.max(
-                ...state.results.powerCurve.map((r) => r.windSpeed),
-              ).toFixed(2)}{" "}
-              m/s
-            </span>
-
-            <span>
-              Max Power:{" "}
-              {Math.max(
-                ...state.results.powerCurve.map((r) => r.power),
-              ).toFixed(0)}{" "}
-              kW
-            </span>
+            <span>Total files: {state.formats.length * 2}</span>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderTable = () => (
-    <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden backdrop-blur-sm">
-      <div className="px-6 py-4 border-b border-zinc-700 bg-zinc-900/50">
-        <h3 className="text-lg font-semibold text-zinc-100">
-          Final Power Curve
-        </h3>
-        <p className="text-sm text-zinc-400 mt-1">
-          Averaged results across all processed files
-        </p>
-      </div>
-
-      <div className="overflow-x-auto">
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-900/70 border-b border-zinc-700 sticky top-0 backdrop-blur-sm">
-              <tr>
-                <TableHeader>Wind Speed (m/s)</TableHeader>
-                <TableHeader>Power (kW)</TableHeader>
-                <TableHeader>Torque (kNm)</TableHeader>
-                <TableHeader>Gen Speed (RPM)</TableHeader>
-                <TableHeader>Cp</TableHeader>
-                <TableHeader>Ct</TableHeader>
-                <TableHeader>Bladepitch 1 (DEG)</TableHeader>
-                <TableHeader>Bladepitch 2 (DEG)</TableHeader>
-                <TableHeader>Bladepitch 3 (DEG)</TableHeader>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-700">
-              {state.results.powerCurve.map((row, idx) => (
-                <tr
-                  key={idx}
-                  className="hover:bg-zinc-700/30 transition-colors"
-                >
-                  <TableCell bold>{row.windSpeed.toFixed(2)}</TableCell>
-                  <TableCell>{row.power.toFixed(2)}</TableCell>
-                  <TableCell>{row.torque.toFixed(4)}</TableCell>
-                  <TableCell>{row.genSpeed.toFixed(4)}</TableCell>
-                  <TableCell>{row.cp.toFixed(6)}</TableCell>
-                  <TableCell>{row.ct.toFixed(6)}</TableCell>
-                  <TableCell>{row.bladePitch1.toFixed(4)}</TableCell>
-                  <TableCell>{row.bladePitch2.toFixed(4)}</TableCell>
-                  <TableCell>{row.bladePitch3.toFixed(4)}</TableCell>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -590,7 +650,11 @@ export default function Home() {
 
               <Button
                 onClick={handleProcessFiles}
-                disabled={state.processing || state.selectedFiles.length === 0}
+                disabled={
+                  state.processing ||
+                  state.selectedFiles.length === 0 ||
+                  state.formats.length === 0
+                }
                 className="px-6 py-3 font-semibold"
               >
                 <Icon path="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -608,7 +672,7 @@ export default function Home() {
                 {state.currentStep}
               </span>
               <span className="text-sm font-semibold text-emerald-400">
-                {state.progress}%
+                {Math.round(state.progress)}%
               </span>
             </div>
             <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden shadow-inner">
@@ -766,15 +830,75 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {/* Inside your <main> tag, add this right after the error block */}
+
             {!state.results && !state.processing && (
-              <InstructionSteps
-                filesCount={state.files.length}
-                selectedCount={state.selectedFiles.length}
-              />
+              <>
+                <InstructionSteps
+                  filesCount={state.files.length}
+                  selectedCount={state.selectedFiles.length}
+                  formatsCount={state.formats.length}
+                />
+
+                {/* Parameters and Format Selector */}
+                {state.files.length > 0 && (
+                  <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Parameters */}
+                    <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm">
+                      <h3 className="text-lg font-semibold text-zinc-100 mb-4">
+                        Parameters
+                      </h3>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-300 mb-2">
+                            Air Density (kg/m³)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.001"
+                            min="0.5"
+                            max="2.0"
+                            value={state.airDensity}
+                            onChange={(e) =>
+                              updateState({
+                                airDensity: Number(e.target.value),
+                              })
+                            }
+                            className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-zinc-300 mb-2">
+                            Rotor Area (m²)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="1"
+                            max="50000"
+                            value={state.rotorArea}
+                            onChange={(e) =>
+                              updateState({ rotorArea: Number(e.target.value) })
+                            }
+                            className="w-full px-4 py-2.5 bg-zinc-900 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                          />
+                          <p className="text-xs text-zinc-500 mt-1">
+                            NREL 5MW: 28630
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Format Selector */}
+                    <FormatSelector
+                      formats={state.formats}
+                      toggleFormat={toggleFormat}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
-            {state.results ? (
+            {state.results && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -793,88 +917,48 @@ export default function Home() {
                       Processing Complete
                     </h2>
                     <p className="text-sm text-zinc-400 mt-1">
-                      Results are ready for download
+                      {state.formats.length * 2} files ready for download
                     </p>
                   </div>
 
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={() => {
-                        downloadCSV(
-                          state.results.individualSeedsCSV,
-                          `all_seed_averages_${state.results.processedAirDensity}.csv`,
-                        );
-
-                        downloadCSV(
-                          state.results.powerCurveCSV,
-                          `final_power_curve_${state.results.processedAirDensity}.csv`,
-                        );
-                      }}
-                    >
-                      <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      Download All Results
-                    </Button>
-                  </div>
+                  <Button onClick={downloadAllFiles}>
+                    <Icon path="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    Download All Files
+                  </Button>
                 </div>
 
                 {renderConfigBanner()}
-                {renderTable()}
-              </div>
-            ) : state.activeFile ? (
-              <div>
-                <h2 className="text-xl font-semibold text-zinc-100 mb-6">
-                  File Preview
-                </h2>
-                <div className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm">
-                  <div className="space-y-4">
-                    {[
-                      {
-                        label: "File Name",
-                        value: state.activeFile.name,
-                        mono: true,
-                      },
-                      {
-                        label: "File Size",
-                        value: `${(state.activeFile.size / 1024).toFixed(2)} KB`,
-                      },
-                      {
-                        label: "File Type",
-                        value:
-                          state.activeFile.type || "application/octet-stream",
-                      },
-                    ].map(({ label, value, mono }) => (
-                      <div
-                        key={label}
-                        className="flex items-center justify-between py-3 border-b border-zinc-700 last:border-0"
-                      >
-                        <span className="text-sm font-medium text-zinc-300">
-                          {label}
-                        </span>
-                        <span
-                          className={`text-sm text-zinc-100 ${mono ? "font-mono" : ""}`}
+
+                {/* Download Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {state.formats.map((format) => (
+                    <div
+                      key={format}
+                      className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm"
+                    >
+                      <h3 className="text-lg font-semibold text-zinc-100 mb-4 uppercase">
+                        {format}
+                      </h3>
+                      <div className="space-y-3">
+                        <Button
+                          onClick={() => downloadFile(format, "individual")}
+                          variant="secondary"
+                          className="w-full justify-center"
                         >
-                          {value}
-                        </span>
+                          <Icon path="M12 10v6m0 0l-3-3m3 3l3-3" />
+                          Seed Averages
+                        </Button>
+                        <Button
+                          onClick={() => downloadFile(format, "powerCurve")}
+                          variant="secondary"
+                          className="w-full justify-center"
+                        >
+                          <Icon path="M12 10v6m0 0l-3-3m3 3l3-3" />
+                          Power Curve
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <Icon
-                    path="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                    className="w-20 h-20 mx-auto text-zinc-700 mb-4"
-                  />
-                  <p className="text-zinc-400 text-lg font-medium mb-2">
-                    {state.files.length === 0
-                      ? "Upload a folder to get started"
-                      : "Configure parameters and process your files"}
-                  </p>
-                  <p className="text-zinc-500 text-sm">
-                    Advanced wind turbine performance analysis
-                  </p>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
