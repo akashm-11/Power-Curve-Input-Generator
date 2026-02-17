@@ -2,12 +2,10 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   FileProcessor,
-  createDebouncedProgress,
   toCSV,
   toFWTXT,
   toXLSXBlob,
   createZipPackage,
-  getVisibleRange,
 } from "@/lib/optimizedProcessing";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
@@ -337,20 +335,28 @@ export default function Home() {
     }));
   }, []);
 
-  // Debounced progress handler
-  const handleProgress = useMemo(
-    () =>
-      createDebouncedProgress(
-        ({ progress, message, currentFile, filesProcessed }) => {
+  // Progress handler - batched UI updates to prevent lag
+  const handleProgress = useCallback(
+    ({ progress, message, currentFile, filesProcessed }) => {
+      // Use requestIdleCallback to batch UI updates (prevents blocking)
+      if (typeof requestIdleCallback !== "undefined") {
+        requestIdleCallback(() => {
           updateState({
             progress: Math.round(progress),
             currentStep: message,
             currentFile: currentFile || state.currentFile,
             filesProcessed: filesProcessed || state.filesProcessed,
           });
-        },
-        200,
-      ),
+        });
+      } else {
+        updateState({
+          progress: Math.round(progress),
+          currentStep: message,
+          currentFile: currentFile || state.currentFile,
+          filesProcessed: filesProcessed || state.filesProcessed,
+        });
+      }
+    },
     [updateState],
   );
 
@@ -388,7 +394,7 @@ export default function Home() {
       );
 
       // Process files using Web Worker
-      const { individualData, powerCurveData } =
+      const { results, powerCurve } =
         await fileProcessorRef.current.processBatches(
           filesToProcess,
           Number(state.airDensity),
@@ -396,43 +402,68 @@ export default function Home() {
           handleProgress,
         );
 
-      addLog(`Processed ${individualData.length} file records`, "success");
-      addLog(
-        `Generated ${powerCurveData.length} power curve points`,
-        "success",
-      );
+      addLog(`Processed ${results.length} file records`, "success");
+      addLog(`Generated ${powerCurve.length} power curve points`, "success");
+
+      // ✅ Calculate RotorArea stats (similar to pcs-ui-siddhi)
+      const fileMeanAreas = results
+        .map((r) => Number(r._rotorArea))
+        .filter((val) => !isNaN(val) && val > 0);
+
+      const meanRotorArea =
+        fileMeanAreas.length > 0
+          ? fileMeanAreas.reduce((a, b) => a + b, 0) / fileMeanAreas.length
+          : 0;
+
+      const maxRotorArea =
+        fileMeanAreas.length > 0 ? Math.max(...fileMeanAreas) : 0;
 
       handleProgress({ progress: 96, message: "Generating output files..." });
+
+      // ✅ Sort data by wind speed before generating files
+      const sortByWindSpeed = (data) => {
+        return [...data].sort(
+          (a, b) =>
+            parseFloat(a["WindSpeed(ms)"] ?? 0) -
+            parseFloat(b["WindSpeed(ms)"] ?? 0),
+        );
+      };
+
+      const sortedIndividualData = sortByWindSpeed(results);
+      const sortedPowerCurveData = sortByWindSpeed(powerCurve);
 
       // Generate format files
       const resultsByFormat = {};
       const baseName = {
-        individual: `final_individual_${state.airDensity}`,
-        powerCurve: `final_powercurve_${state.airDensity}`,
+        individual: `final_individual_${Date.now()}`,
+        powerCurve: `final_powercurve_${Date.now()}`,
       };
 
       for (const fmt of state.formats) {
         let individualBlob, powerBlob, individualName, powerName, contentType;
 
         if (fmt === "csv") {
-          const indContent = toCSV(individualData);
-          const pcContent = toCSV(powerCurveData);
+          const indContent = toCSV(sortedIndividualData);
+          const pcContent = toCSV(sortedPowerCurveData);
           individualBlob = new Blob([indContent], { type: "text/csv" });
           powerBlob = new Blob([pcContent], { type: "text/csv" });
           contentType = "text/csv";
           individualName = `${baseName.individual}.csv`;
           powerName = `${baseName.powerCurve}.csv`;
         } else if (fmt === "fw.txt") {
-          const indContent = toFWTXT(individualData);
-          const pcContent = toFWTXT(powerCurveData);
+          const indContent = toFWTXT(sortedIndividualData);
+          const pcContent = toFWTXT(sortedPowerCurveData);
           individualBlob = new Blob([indContent], { type: "text/plain" });
           powerBlob = new Blob([pcContent], { type: "text/plain" });
           contentType = "text/plain";
           individualName = `${baseName.individual}.fw.txt`;
           powerName = `${baseName.powerCurve}.fw.txt`;
         } else if (fmt === "xlsx") {
-          individualBlob = await toXLSXBlob(individualData, "Seed Averages");
-          powerBlob = await toXLSXBlob(powerCurveData, "Power Curve");
+          individualBlob = await toXLSXBlob(
+            sortedIndividualData,
+            "Seed Averages",
+          );
+          powerBlob = await toXLSXBlob(sortedPowerCurveData, "Power Curve");
           contentType =
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
           individualName = `${baseName.individual}.xlsx`;
@@ -469,6 +500,8 @@ export default function Home() {
           processedAirDensity: state.airDensity,
           processedRotorArea: state.rotorArea,
           processedFormats: state.formats,
+          meanRotorArea: meanRotorArea,
+          maxRotorArea: maxRotorArea,
         },
         progress: 100,
         currentStep: "Complete!",
@@ -519,12 +552,9 @@ export default function Home() {
     if (!sidebarScrollRef.current) return state.files;
 
     const containerHeight = sidebarScrollRef.current.clientHeight || 600;
-    const { start, end } = getVisibleRange(
-      scrollTop,
-      ITEM_HEIGHT,
-      containerHeight,
-      state.files.length,
-    );
+    const start = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - 5);
+    const visibleCount = Math.ceil(containerHeight / ITEM_HEIGHT);
+    const end = Math.min(start + visibleCount + 5, state.files.length);
 
     return state.files.slice(start, end).map((file, idx) => ({
       file,
@@ -591,13 +621,46 @@ export default function Home() {
               Processing Configuration
             </h3>
 
-            <div className="flex items-center gap-6 text-xs text-zinc-400 pt-3 border-t border-zinc-700/50">
-              <span>{state.selectedFiles.length} files processed</span>
+            <div className="grid grid-cols-4 gap-4 mb-3">
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
+                <div className="text-xs text-zinc-400 mb-1">Air Density</div>
+                <div className="text-lg font-semibold text-emerald-400">
+                  {state.results?.processedAirDensity?.toFixed(3) || "1.225"}
+                </div>
+                <div className="text-xs text-zinc-500">kg/m³</div>
+              </div>
+
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
+                <div className="text-xs text-zinc-400 mb-1">RtArea Mean</div>
+                <div className="text-lg font-semibold text-emerald-400">
+                  {state.results?.meanRotorArea?.toFixed(2) || "0.00"}
+                </div>
+                <div className="text-xs text-zinc-500">m²</div>
+              </div>
+
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
+                <div className="text-xs text-zinc-400 mb-1">RtArea Max</div>
+                <div className="text-lg font-semibold text-emerald-400">
+                  {state.results?.maxRotorArea?.toFixed(2) || "0.00"}
+                </div>
+                <div className="text-xs text-zinc-500">m²</div>
+              </div>
+
+              <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
+                <div className="text-xs text-zinc-400 mb-1">Output Files</div>
+                <div className="text-lg font-semibold text-emerald-400">
+                  {state.formats.length * 2}
+                </div>
+                <div className="text-xs text-zinc-500">generated</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-xs text-zinc-400 pt-3 border-t border-zinc-700/50">
               <span>
                 Formats:{" "}
-                {state.results.processedFormats.join(", ").toUpperCase()}
+                {state.results?.processedFormats?.join(", ").toUpperCase() ||
+                  ""}
               </span>
-              <span>Total files: {state.formats.length * 2}</span>
             </div>
           </div>
         </div>

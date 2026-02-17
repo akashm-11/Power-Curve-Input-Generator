@@ -182,8 +182,8 @@ export function processOpenFASTOutFiles(
     individualData,
     powerCurveData,
     baseName: {
-      individual: `final_individual_${airDensity}`,
-      powerCurve: `final_powercurve_${airDensity}`,
+      individual: `final_individual_${Date.now()}`,
+      powerCurve: `final_powercurve_${Date.now()}`,
     },
   };
 }

@@ -14,13 +14,13 @@ export default function Sidebar({
 }) {
   if (sidebarCollapsed) {
     return (
-      <div className="w-16 bg-zinc-900/50 border-r border-zinc-800 flex flex-col items-center py-4">
+      <div className="w-16 bg-zinc-900/70 border-r-2 border-emerald-500/30 flex flex-col items-center py-4 shadow-lg">
         <button
           onClick={onToggleSidebar}
-          className="p-3 hover:bg-zinc-800 rounded-lg transition-colors"
+          className="p-3 hover:bg-emerald-500/20 hover:border hover:border-emerald-500/40 rounded-lg transition-all"
           title="Expand Sidebar"
         >
-          <Icon path="M9 5l7 7-7 7" className="w-5 h-5 text-zinc-400" />
+          <Icon path="M9 5l7 7-7 7" className="w-5 h-5 text-emerald-400" />
         </button>
       </div>
     );
@@ -29,16 +29,19 @@ export default function Sidebar({
   const allSelected = selectedFiles.length === files.length && files.length > 0;
 
   return (
-    <aside className="w-80 bg-zinc-900/50 border-r border-zinc-800 flex flex-col overflow-hidden flex-shrink-0">
+    <aside className="w-80 bg-zinc-900/60 border-r-2 border-emerald-500/30 flex flex-col overflow-hidden flex-shrink-0 shadow-lg">
       {/* Header */}
-      <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/70 flex-shrink-0">
+      <div className="p-4 border-b-2 border-emerald-500/30 flex items-center justify-between bg-gradient-to-r from-zinc-900/80 to-zinc-900/60 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Icon path="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-          <h2 className="text-sm font-semibold text-zinc-100 uppercase tracking-wide">
+          <Icon
+            path="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+            className="text-emerald-400"
+          />
+          <h2 className="text-sm font-bold text-emerald-300 uppercase tracking-wide">
             Files
           </h2>
           {files.length > 0 && (
-            <span className="text-xs bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-emerald-500/30 border border-emerald-500/50 text-emerald-200 px-2 py-0.5 rounded-full font-semibold">
               {files.length}
             </span>
           )}
@@ -46,21 +49,21 @@ export default function Sidebar({
 
         <button
           onClick={onToggleSidebar}
-          className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-emerald-500/20 rounded-lg transition-all"
           title="Collapse Sidebar"
         >
-          <Icon path="M15 19l-7-7 7-7" className="w-4 h-4 text-zinc-400" />
+          <Icon path="M15 19l-7-7 7-7" className="w-4 h-4 text-emerald-400" />
         </button>
       </div>
 
       {/* Files Section */}
       {files.length > 0 && (
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          <div className="px-4 py-3 border-b border-zinc-800 bg-zinc-900/50 flex-shrink-0">
+          <div className="px-4 py-3 border-b-2 border-emerald-500/20 bg-zinc-900/50 flex-shrink-0">
             <div className="flex items-center justify-between mb-2">
               <button
                 onClick={onToggleFiles}
-                className="flex items-center gap-2 text-sm font-medium text-zinc-200 hover:text-zinc-100"
+                className="flex items-center gap-2 text-sm font-semibold text-emerald-300 hover:text-emerald-200"
               >
                 <Icon
                   path={filesCollapsed ? "M9 5l7 7-7 7" : "M19 9l-7 7-7-7"}
@@ -111,7 +114,7 @@ export default function Sidebar({
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-zinc-800/50 flex items-center justify-center">
               <Icon
                 path="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                className="w-8 h-8 text-zinc-600"
+                className="w-8 h-8 text-green-600"
               />
             </div>
             <p className="text-sm text-zinc-400">No files loaded</p>
