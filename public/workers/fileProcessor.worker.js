@@ -78,7 +78,7 @@ function parseOutFileOptimized(fileContent, timeColumn = "Time") {
   return { headers, data, stats };
 }
 
-function processFile(fileContent, fileName, airDensity, rotorArea) {
+function processFile(fileContent, fileName, airDensity) {
   const parsed = parseOutFileOptimized(fileContent, COLUMNS.time);
   const { data, stats } = parsed;
 
@@ -131,18 +131,13 @@ self.onmessage = async function (e) {
 
   try {
     if (type === "PROCESS_BATCH") {
-      const { files, airDensity, rotorArea, batchIndex, totalBatches } = data;
+      const { files, airDensity, batchIndex, totalBatches } = data;
       const results = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
 
-        const result = processFile(
-          file.content,
-          file.name,
-          airDensity,
-          rotorArea,
-        );
+        const result = processFile(file.content, file.name, airDensity);
         if (result) {
           results.push(result);
         }

@@ -18,10 +18,10 @@ export default function MainPanel({
       <div className="flex-1 overflow-y-auto p-8">
         {/* Error */}
         {state.error && (
-          <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-5 shadow-lg">
+          <div className="mb-6 bg-red-500/15 border-2 border-red-500/50 rounded-xl p-5 shadow-lg shadow-red-500/20">
             <div className="flex items-start gap-3">
               <svg
-                className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0"
+                className="w-5 h-5 text-red-400 mt-0.5 shrink-0"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -43,7 +43,7 @@ export default function MainPanel({
 
         {/* BEFORE PROCESSING */}
         {!state.results && !state.processing && (
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
+          <div className="bg-linear-to-r from-zinc-900/60 to-zinc-900/40 border-2 border-emerald-500/30 rounded-2xl p-8 shadow-2xl shadow-emerald-500/10">
             {/* INNER GRID */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* LEFT: Instructions */}
@@ -73,7 +73,7 @@ export default function MainPanel({
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-semibold text-zinc-100 flex items-center gap-2">
+                <h2 className="text-2xl font-bold text-emerald-300 flex items-center gap-2">
                   <svg
                     className="w-7 h-7 text-emerald-400"
                     fill="currentColor"
@@ -85,9 +85,9 @@ export default function MainPanel({
                       clipRule="evenodd"
                     />
                   </svg>
-                  Processing Complete
+                  Processing Complete ✨
                 </h2>
-                <p className="text-sm text-zinc-400 mt-1">
+                <p className="text-sm text-zinc-300 mt-1 font-medium">
                   {state.formats.length * 2} files ready for download
                 </p>
               </div>
@@ -105,23 +105,33 @@ export default function MainPanel({
               {state.formats.map((format) => (
                 <div
                   key={format}
-                  className="bg-zinc-800/50 border border-zinc-700 rounded-xl p-6 shadow-xl backdrop-blur-sm"
+                  className="bg-linear-to-br from-zinc-800/70 to-zinc-800/50 border-2 border-emerald-500/40 rounded-xl p-6 shadow-lg shadow-emerald-500/15 backdrop-blur-sm hover:border-emerald-500/60 transition-all"
                 >
-                  <h3 className="text-lg font-semibold text-zinc-100 mb-4 uppercase">
+                  <h3 className="text-lg font-bold text-emerald-300 mb-4 uppercase tracking-wide">
                     {format}
                   </h3>
                   <div className="space-y-3">
                     <Button
                       onClick={() => downloadFile(format, "individual")}
-                      variant="secondary"
-                      className="w-full justify-center"
+                      variant="outlined"
+                      className="w-full justify-center text-white 
+bg-gradient-to-r from-blue-600 to-cyan-500 
+hover:from-blue-500 hover:to-cyan-400 
+transition-all duration-300 
+shadow-lg hover:shadow-cyan-500/30 
+rounded-xl"
                     >
-                      Seed Averages
+                      Seed Average
                     </Button>
                     <Button
                       onClick={() => downloadFile(format, "powerCurve")}
-                      variant="secondary"
-                      className="w-full justify-center"
+                      variant="outlined"
+                      className="w-full justify-center text-white 
+bg-gradient-to-r from-orange-400 to-pink-400 
+hover:from-orange-500 hover:to-pink-500  
+transition-all duration-300 
+shadow-lg hover:shadow-pink-500/30 
+rounded-xl"
                     >
                       Power Curve
                     </Button>
@@ -132,49 +142,6 @@ export default function MainPanel({
           </div>
         )}
       </div>
-
-      {/* LOGS */}
-      {state.logs.length > 0 && (
-        <div
-          className={`border-t border-zinc-800 bg-zinc-900/50 backdrop-blur-xl flex flex-col transition-all duration-300 ${
-            state.showLogs ? "h-64" : "h-12"
-          } flex-shrink-0`}
-        >
-          <div className="px-6 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/70">
-            <h3 className="text-sm font-semibold text-zinc-200 uppercase tracking-wide">
-              Processing Logs {!state.showLogs && `(${state.logs.length})`}
-            </h3>
-            <div className="flex items-center gap-2">
-              {state.showLogs && (
-                <button
-                  onClick={() => updateState({ logs: [] })}
-                  className="text-xs px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg"
-                >
-                  Clear Logs
-                </button>
-              )}
-              <button
-                onClick={() => updateState({ showLogs: !state.showLogs })}
-                className="p-1.5 hover:bg-zinc-800 rounded-lg"
-              >
-                <Icon path="M19 9l-7 7-7-7" />
-              </button>
-            </div>
-          </div>
-
-          {state.showLogs && (
-            <div className="flex-1 overflow-y-auto p-4 space-y-1 font-mono text-xs">
-              {state.logs.map((log, index) => (
-                <div key={index} className="px-3 py-2 rounded-lg">
-                  <span className="text-zinc-500">[{log.timestamp}]</span>{" "}
-                  {log.message}
-                </div>
-              ))}
-              <div ref={logsEndRef} />
-            </div>
-          )}
-        </div>
-      )}
     </main>
   );
 }
