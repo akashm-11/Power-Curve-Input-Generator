@@ -17,7 +17,6 @@ const INITIAL_STATE = {
   selectedFiles: [],
   activeFile: null,
   airDensity: 1.225,
-  rotorArea: 26830,
   formats: [],
   processing: false,
   progress: 0,
@@ -386,7 +385,6 @@ export default function Home() {
         "info",
       );
       addLog(`Air Density: ${state.airDensity} kg/m³`, "info");
-      addLog(`Rotor Area: ${state.rotorArea} m²`, "info");
       addLog(`Formats: ${state.formats.join(", ").toUpperCase()}`, "info");
 
       const filesToProcess = state.files.filter((file) =>
@@ -398,25 +396,11 @@ export default function Home() {
         await fileProcessorRef.current.processBatches(
           filesToProcess,
           Number(state.airDensity),
-          Number(state.rotorArea),
           handleProgress,
         );
 
       addLog(`Processed ${results.length} file records`, "success");
       addLog(`Generated ${powerCurve.length} power curve points`, "success");
-
-      // ✅ Calculate RotorArea stats (similar to pcs-ui-siddhi)
-      const fileMeanAreas = results
-        .map((r) => Number(r._rotorArea))
-        .filter((val) => !isNaN(val) && val > 0);
-
-      const meanRotorArea =
-        fileMeanAreas.length > 0
-          ? fileMeanAreas.reduce((a, b) => a + b, 0) / fileMeanAreas.length
-          : 0;
-
-      const maxRotorArea =
-        fileMeanAreas.length > 0 ? Math.max(...fileMeanAreas) : 0;
 
       handleProgress({ progress: 96, message: "Generating output files..." });
 
@@ -498,10 +482,7 @@ export default function Home() {
           allResults: resultsByFormat,
           zip: { blob: zipBlob, url: zipUrl, filename: zipName },
           processedAirDensity: state.airDensity,
-          processedRotorArea: state.rotorArea,
           processedFormats: state.formats,
-          meanRotorArea: meanRotorArea,
-          maxRotorArea: maxRotorArea,
         },
         progress: 100,
         currentStep: "Complete!",
@@ -628,22 +609,6 @@ export default function Home() {
                   {state.results?.processedAirDensity?.toFixed(3) || "1.225"}
                 </div>
                 <div className="text-xs text-zinc-500">kg/m³</div>
-              </div>
-
-              <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
-                <div className="text-xs text-zinc-400 mb-1">RtArea Mean</div>
-                <div className="text-lg font-semibold text-emerald-400">
-                  {state.results?.meanRotorArea?.toFixed(2) || "0.00"}
-                </div>
-                <div className="text-xs text-zinc-500">m²</div>
-              </div>
-
-              <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">
-                <div className="text-xs text-zinc-400 mb-1">RtArea Max</div>
-                <div className="text-lg font-semibold text-emerald-400">
-                  {state.results?.maxRotorArea?.toFixed(2) || "0.00"}
-                </div>
-                <div className="text-xs text-zinc-500">m²</div>
               </div>
 
               <div className="bg-zinc-900/50 rounded-lg p-3 border border-zinc-700/30">

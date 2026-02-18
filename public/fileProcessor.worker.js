@@ -21,7 +21,6 @@ function buildHeaderIndices(headers) {
     else if (h === "WindHubVelX") indices.windX = i;
     else if (h === "WindHubVelY") indices.windY = i;
     else if (h === "WindHubVelZ") indices.windZ = i;
-    else if (h === "RtArea") indices.rtArea = i;
   }
   return indices;
 }
@@ -80,10 +79,6 @@ function parseLineOptimized(line, indices, stats) {
   if (indices.pitch3 !== undefined) {
     const v = parseFloat(values[indices.pitch3]);
     if (!isNaN(v)) stats[7] += v;
-  }
-  if (indices.rtArea !== undefined) {
-    const v = parseFloat(values[indices.rtArea]);
-    if (!isNaN(v)) stats[8] += v;
   }
   if (indices.windX !== undefined) {
     const v = parseFloat(values[indices.windX]);
@@ -184,7 +179,6 @@ self.onmessage = async (event) => {
     const windZ = divide(13);
 
     const totalWind = Math.sqrt(windX * windX + windY * windY + windZ * windZ);
-    const rotorAreaValue = divide(8);
 
     const groupKey = fileName.toLowerCase().includes("_seed")
       ? fileName.toLowerCase().split("_seed")[0]
@@ -193,7 +187,6 @@ self.onmessage = async (event) => {
     const result = {
       WindSpeedGroup: groupKey,
       Density: airDensity,
-      _rotorArea: rotorAreaValue,
       "WindSpeed(ms)": totalWind,
       "Power(kW)": divide(0),
       "Torque(kNm)": divide(1),

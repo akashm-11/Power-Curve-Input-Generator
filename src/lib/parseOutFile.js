@@ -73,11 +73,7 @@ const groupKey = (name) =>
     ? name.toLowerCase().split("_seed")[0]
     : name.replace(/\.[^/.]+$/, "");
 
-export function processOpenFASTOutFiles(
-  files,
-  airDensity = 1.225,
-  rotorArea = 28630,
-) {
+export function processOpenFASTOutFiles(files, airDensity = 1.225) {
   const individualData = [];
 
   for (const file of files) {

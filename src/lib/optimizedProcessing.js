@@ -10,7 +10,7 @@ const PROGRESS_INTERVAL = 100; // Update UI every 100ms (batched)
  * NOTE: Main thread only reads file as ArrayBuffer and sends to workers
  * All heavy processing offloaded to Web Worker threads
  */
-export async function streamProcessFile(file, airDensity, rotorArea) {
+export async function streamProcessFile(file, airDensity) {
   // Read file as ArrayBuffer (fast binary read)
   const arrayBuffer = await file.arrayBuffer();
   return { arrayBuffer, fileName: file.name, airDensity };
@@ -54,7 +54,7 @@ export class FileProcessor {
    * Each file is processed on a separate worker thread while main thread handles UI
    * This prevents lag during 100GB+ processing with 2640+ files
    */
-  async processBatches(files, airDensity, rotorArea, onProgress) {
+  async processBatches(files, airDensity, onProgress) {
     this.initWorkers();
 
     const totalFiles = files.length;
@@ -67,12 +67,7 @@ export class FileProcessor {
       console.warn(
         "No workers available, using fallback main-thread processing",
       );
-      return this.processBatchesFallback(
-        files,
-        airDensity,
-        rotorArea,
-        onProgress,
-      );
+      return this.processBatchesFallback(files, airDensity, onProgress);
     }
 
     // Create task-to-resolve map for promises
@@ -259,7 +254,7 @@ export class FileProcessor {
    * Fallback processor for when workers unavailable
    * Processes files sequentially on main thread
    */
-  async processBatchesFallback(files, airDensity, rotorArea, onProgress) {
+  async processBatchesFallback(files, airDensity, onProgress) {
     const totalFiles = files.length;
     let processedCount = 0;
     const results = new Array(totalFiles);
